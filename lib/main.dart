@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 
 import 'routes.dart';
+import 'services/trip_service.dart';
+import 'services/theme_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load saved trip information.
+  await TripService.instance.loadAllData();
+
+  // Load the user's saved theme preference.
+  await ThemeService.loadTheme();
+
   runApp(const MyApp());
 }
 
@@ -11,15 +21,38 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TravelMate',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.pink),
-        useMaterial3: true,
-      ),
-      // Every screen is reached through routes.dart.
-      initialRoute: Routes.home,
-      onGenerateRoute: Routes.generate,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.themeMode,
+      builder: (context, currentTheme, child) {
+        return MaterialApp(
+          title: 'TravelMate',
+          debugShowCheckedModeBanner: false,
+
+          // Light theme.
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.pink,
+              brightness: Brightness.light,
+            ),
+            useMaterial3: true,
+          ),
+
+          // Dark theme.
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.pink,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+
+          // Theme selected by the user.
+          themeMode: currentTheme,
+
+          initialRoute: Routes.home,
+          onGenerateRoute: Routes.generate,
+        );
+      },
     );
   }
 }

@@ -82,7 +82,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
     });
   }
 
-  void _saveTrip() {
+  Future<void> _saveTrip() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (_startDate == null || _endDate == null) {
@@ -105,11 +105,14 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
 
     if (_isEditing) {
       final trip = widget.trip!;
+
       trip.name = _nameController.text.trim();
       trip.destination = _destinationController.text.trim();
       trip.startDate = _startDate!;
       trip.endDate = _endDate!;
       trip.notes = _notesController.text.trim();
+
+      await service.updateTrip(trip);
     } else {
       final trip = Trip(
         id: service.nextTripId(),
@@ -120,8 +123,10 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
         notes: _notesController.text.trim(),
       );
 
-      service.addTrip(trip);
+      await service.addTrip(trip);
     }
+
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
