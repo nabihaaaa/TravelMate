@@ -21,8 +21,17 @@ class TripDashboardScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.edit),
             tooltip: 'Edit trip',
-            onPressed: () =>
-                Navigator.pushNamed(context, Routes.createTrip, arguments: trip),
+            onPressed: () async {
+              final updated = await Navigator.pushNamed(
+                context,
+                Routes.createTrip,
+                arguments: trip,
+              );
+
+              if (updated == true && context.mounted) {
+                (context as Element).markNeedsBuild();
+              }
+            },
           ),
         ],
       ),
