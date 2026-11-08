@@ -40,8 +40,7 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
   String _formatDate(DateTime date) =>
       '${_months[date.month - 1]} ${date.day}, ${date.year}';
 
-  // Open another screen for this trip, then refresh when we come back
-  // (the packing list or expenses may have changed).
+  // Open another screen for this trip, then refresh when we come back.
   Future<void> _go(String route) async {
     await Navigator.pushNamed(context, route, arguments: trip);
     if (mounted) setState(() {});
@@ -49,7 +48,7 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
 
   Future<void> _editTrip() async {
     await Navigator.pushNamed(context, Routes.createTrip, arguments: trip);
-    if (mounted) setState(() {}); // the trip was edited in place
+    if (mounted) setState(() {});
   }
 
   // Next 3 activities that are today or later, soonest first.
@@ -69,8 +68,10 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(trip.name),
+        title: const Text('Trip Dashboard'),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
@@ -83,27 +84,19 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _buildSummaryCard(),
-          _buildPackingCard(),
-          _buildBudgetCard(),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildPackingCard()),
+                Expanded(child: _buildBudgetCard()),
+              ],
+            ),
+          ),
           _buildUpNextCard(),
-          const SizedBox(height: 8),
-          _sectionTitle('Trip tools'),
-          _link(Icons.event_note, 'Itinerary', Routes.itinerary),
-          _link(Icons.luggage, 'Packing List', Routes.packing),
-          _link(Icons.attach_money, 'Expenses', Routes.expenses),
-          _link(Icons.map, 'Places & Map', Routes.places),
+          _buildPlacesCard(),
+          _buildItineraryCard(),
         ],
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleMedium
-            ?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -116,29 +109,20 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.place),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    trip.destination,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
+            Text(
+              trip.name,
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  '${_formatDate(trip.startDate)} - '
-                  '${_formatDate(trip.endDate)}  '
-                  '(${trip.days} ${trip.days == 1 ? 'day' : 'days'})',
-                ),
-              ],
+            const SizedBox(height: 4),
+            Text(
+              '${_formatDate(trip.startDate)} - '
+              '${_formatDate(trip.endDate)}',
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${trip.destination} · ${trip.days} '
+              '${trip.days == 1 ? 'day' : 'days'}',
             ),
             if (trip.notes.trim().isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -150,27 +134,66 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
     );
   }
 
+  // One small stat card (used for Packing and Budget).
+  Widget _statCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required double progress,
+    required String caption,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 18, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Text(label, style: TextStyle(color: scheme.primary)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: progress),
+              const SizedBox(height: 8),
+              Text(caption, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPackingCard() {
     final items = TripService.instance.packingFor(trip.id);
     final packed = items.where((item) => item.isPacked).length;
+    final progress = items.isEmpty ? 0.0 : packed / items.length;
 
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.luggage),
-        title: const Text('Packing'),
-        subtitle: items.isEmpty
-            ? const Text('No packing items yet')
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('$packed of ${items.length} packed'),
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(value: packed / items.length),
-                ],
-              ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _go(Routes.packing),
-      ),
+    return _statCard(
+      icon: Icons.luggage,
+      label: 'Packing',
+      value: items.isEmpty
+          ? 'No items yet'
+          : '$packed of ${items.length} packed',
+      progress: progress,
+      caption: items.isEmpty
+          ? 'Add items in Packing'
+          : '${(progress * 100).round()}% done',
+      onTap: () => _go(Routes.packing),
     );
   }
 
@@ -180,40 +203,28 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
         .fold<double>(0, (sum, expense) => sum + expense.amount);
     final budget = trip.budget;
 
-    Widget subtitle;
     if (budget == null || budget <= 0) {
-      subtitle = Text('\$${spent.toStringAsFixed(2)} spent (no budget set)');
-    } else {
-      final remaining = budget - spent;
-      subtitle = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '\$${spent.toStringAsFixed(2)} of '
-            '\$${budget.toStringAsFixed(2)} spent',
-          ),
-          const SizedBox(height: 6),
-          LinearProgressIndicator(
-            value: (spent / budget).clamp(0.0, 1.0).toDouble(),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            remaining >= 0
-                ? '\$${remaining.toStringAsFixed(2)} remaining'
-                : '\$${(-remaining).toStringAsFixed(2)} over budget',
-          ),
-        ],
+      return _statCard(
+        icon: Icons.attach_money,
+        label: 'Budget',
+        value: '\$${spent.toStringAsFixed(0)} spent',
+        progress: 0,
+        caption: 'No budget set',
+        onTap: () => _go(Routes.expenses),
       );
     }
 
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.attach_money),
-        title: const Text('Budget'),
-        subtitle: subtitle,
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _go(Routes.expenses),
-      ),
+    final remaining = budget - spent;
+
+    return _statCard(
+      icon: Icons.attach_money,
+      label: 'Budget',
+      value: '\$${spent.toStringAsFixed(0)} / \$${budget.toStringAsFixed(0)}',
+      progress: (spent / budget).clamp(0.0, 1.0).toDouble(),
+      caption: remaining >= 0
+          ? '\$${remaining.toStringAsFixed(0)} remaining'
+          : '\$${(-remaining).toStringAsFixed(0)} over budget',
+      onTap: () => _go(Routes.expenses),
     );
   }
 
@@ -228,7 +239,7 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
           children: [
             ListTile(
               title: Text(
-                'Up next',
+                'Up Next',
                 style: Theme.of(context).textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
@@ -259,13 +270,28 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
     );
   }
 
-  Widget _link(IconData icon, String label, String route) {
+  Widget _buildPlacesCard() {
+    final count = TripService.instance.placesFor(trip.id).length;
+
     return Card(
       child: ListTile(
-        leading: Icon(icon),
-        title: Text(label),
+        leading: const Icon(Icons.map),
+        title: const Text('Places & Map'),
+        subtitle: Text('$count saved ${count == 1 ? 'place' : 'places'}'),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => _go(route),
+        onTap: () => _go(Routes.places),
+      ),
+    );
+  }
+
+  Widget _buildItineraryCard() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.event_note),
+        title: const Text('Itinerary'),
+        subtitle: const Text('Plan your trip day by day'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _go(Routes.itinerary),
       ),
     );
   }

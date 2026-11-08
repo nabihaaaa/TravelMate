@@ -20,6 +20,14 @@ class _HomeScreenState extends State<HomeScreen> {
   static const List<String> _filters = ['All', 'Upcoming', 'Past'];
   String _filter = 'All';
 
+  // Each trip gets one of these colours for its icon badge.
+  static const List<MaterialColor> _badgeColors = [
+    Colors.pink,
+    Colors.orange,
+    Colors.indigo,
+    Colors.teal,
+  ];
+
   static const List<String> _months = [
     'Jan',
     'Feb',
@@ -67,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openTrip(Trip trip) async {
     await Navigator.pushNamed(context, Routes.dashboard, arguments: trip);
-    if (mounted) setState(() {}); // refresh in case the trip changed
+    if (mounted) setState(() {});
   }
 
   Future<void> _createTrip() async {
@@ -120,63 +128,88 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('My Trips'),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
       ),
-      body: allTrips.isEmpty
-          ? _buildEmptyState()
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (nextTrip != null) _buildNextTripCard(nextTrip),
-                _buildFilterChips(),
-                if (visibleTrips.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Center(
-                      child: Text('No ${_filter.toLowerCase()} trips.'),
-                    ),
-                  )
-                else
-                  ...visibleTrips.map(_buildTripTile),
-              ],
+      body: Column(
+        children: [
+          Expanded(
+            child: allTrips.isEmpty
+                ? _buildEmptyState()
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    children: [
+                      if (nextTrip != null) _buildNextTripCard(nextTrip),
+                      _buildFilterChips(),
+                      if (visibleTrips.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: Text('No ${_filter.toLowerCase()} trips.'),
+                          ),
+                        )
+                      else
+                        _buildTripList(visibleTrips),
+                    ],
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _createTrip,
+                icon: const Icon(Icons.add),
+                label: const Text('Create Trip'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: const StadiumBorder(),
+                ),
+              ),
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createTrip,
-        tooltip: 'Create trip',
-        child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return const Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.luggage, size: 64),
-            const SizedBox(height: 16),
-            const Text(
+            Icon(Icons.luggage, size: 64),
+            SizedBox(height: 16),
+            Text(
               'No trips yet',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
-            const Text('Tap the button below to plan your first trip.'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _createTrip,
-              icon: const Icon(Icons.add),
-              label: const Text('Create Trip'),
-            ),
+            SizedBox(height: 8),
+            Text('Tap Create Trip below to plan your first trip.'),
           ],
         ),
       ),
     );
   }
 
+  Widget _pill(String text) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 12, color: scheme.primary)),
+    );
+  }
+
   Widget _buildNextTripCard(Trip trip) {
+    final scheme = Theme.of(context).colorScheme;
     final service = TripService.instance;
     final packingItems = service.packingFor(trip.id);
     final packed = packingItems.where((item) => item.isPacked).length;
@@ -190,26 +223,50 @@ class _HomeScreenState extends State<HomeScreen> {
               '\$${trip.budget!.toStringAsFixed(0)} spent';
 
     return Card(
-      color: Theme.of(context).colorScheme.primaryContainer,
+      color: scheme.primaryContainer,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _openTrip(trip),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text('Next trip', style: Theme.of(context).textTheme.labelMedium),
-              const SizedBox(height: 4),
-              Text(trip.name, style: Theme.of(context).textTheme.titleLarge),
-              Text(_formatRange(trip)),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: [
-                  Chip(label: Text('$packed of ${packingItems.length} packed')),
-                  Chip(label: Text(spentText)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Next trip',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      trip.name,
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    Text(_formatRange(trip)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _pill('$packed of ${packingItems.length} packed'),
+                        _pill(spentText),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.luggage, color: scheme.primary),
               ),
             ],
           ),
@@ -219,42 +276,71 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFilterChips() {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Wrap(
         spacing: 8,
-        children: _filters
-            .map(
-              (label) => ChoiceChip(
-                label: Text(label),
-                selected: _filter == label,
-                onSelected: (_) => setState(() => _filter = label),
-              ),
-            )
-            .toList(),
+        children: _filters.map((label) {
+          final selected = _filter == label;
+          return ChoiceChip(
+            label: Text(label),
+            selected: selected,
+            showCheckmark: false,
+            shape: const StadiumBorder(),
+            selectedColor: scheme.primary,
+            labelStyle: TextStyle(
+              color: selected ? scheme.onPrimary : scheme.onSurface,
+            ),
+            onSelected: (_) => setState(() => _filter = label),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // All trips in one rounded card, separated by thin dividers.
+  Widget _buildTripList(List<Trip> trips) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int i = 0; i < trips.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _buildTripTile(trips[i]),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildTripTile(Trip trip) {
-    return Card(
-      child: ListTile(
-        leading: Icon(_isPast(trip) ? Icons.history : Icons.place),
-        title: Text(trip.name),
-        subtitle: Text('${trip.destination}\n${_formatRange(trip)}'),
-        isThreeLine: true,
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') _editTrip(trip);
-            if (value == 'delete') _confirmDelete(trip);
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'edit', child: Text('Edit')),
-            PopupMenuItem(value: 'delete', child: Text('Delete')),
-          ],
+    final color = _badgeColors[trip.id % _badgeColors.length];
+
+    return ListTile(
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color.shade100,
+          borderRadius: BorderRadius.circular(12),
         ),
-        onTap: () => _openTrip(trip),
+        child: Icon(Icons.location_on, color: color.shade700),
       ),
+      title: Text(trip.name),
+      subtitle: Text('${trip.destination}\n${_formatRange(trip)}'),
+      isThreeLine: true,
+      trailing: PopupMenuButton<String>(
+        onSelected: (value) {
+          if (value == 'edit') _editTrip(trip);
+          if (value == 'delete') _confirmDelete(trip);
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'edit', child: Text('Edit')),
+          PopupMenuItem(value: 'delete', child: Text('Delete')),
+        ],
+      ),
+      onTap: () => _openTrip(trip),
     );
   }
 }
