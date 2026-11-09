@@ -6,36 +6,39 @@
 //   final trips = TripService.instance.trips;
 //   TripService.instance.itineraryFor(trip.id);
 
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/expense.dart';
 import '../models/itinerary_item.dart';
 import '../models/packing_item.dart';
 import '../models/place.dart';
 import '../models/trip.dart';
 
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
 class TripService {
-  TripService._(); // private constructor: nobody else can create one
+  TripService._();
+
   static final TripService instance = TripService._();
 
-  // Key used to store the user's trips locally.
   static const String _tripsKey = 'saved_trips';
   static const String _itineraryKey = 'saved_itinerary';
   static const String _packingKey = 'saved_packing';
   static const String _expensesKey = 'saved_expenses';
   static const String _placesKey = 'saved_places';
 
-  // Load saved trips when the app starts.
+  static const String _contactsKey = 'trusted_contacts';
+  static const String _safetyNotesKey = 'safety_notes';
+  static const String _emergencyInfoKey = 'emergency_info';
+  static const String _checkInTimesKey = 'check_in_times';
+  static const String _checkInEnabledKey = 'check_in_enabled';
+
+  // Load saved trips.
   Future<void> loadTrips() async {
     final prefs = await SharedPreferences.getInstance();
     final savedData = prefs.getString(_tripsKey);
 
-    // Keep the sample trips if this is the first launch.
-    if (savedData == null) {
-      return;
-    }
+    if (savedData == null) return;
 
     try {
       final List<dynamic> decoded = jsonDecode(savedData);
@@ -52,7 +55,7 @@ class TripService {
     }
   }
 
-  // Save the current list of trips to the device.
+  // Save trips.
   Future<void> saveTrips() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -65,7 +68,7 @@ class TripService {
     }
   }
 
-  // Save all trip-related information locally.
+  // Save all application data.
   Future<void> saveAllData() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -90,13 +93,40 @@ class TripService {
       _placesKey,
       jsonEncode(places.map((item) => item.toMap()).toList()),
     );
+
+    await prefs.setString(_contactsKey, jsonEncode(trustedContacts));
+
+    await prefs.setString(
+      _safetyNotesKey,
+      jsonEncode(
+        safetyNotes.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+
+    await prefs.setString(
+      _emergencyInfoKey,
+      jsonEncode(
+        emergencyInfo.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+
+    await prefs.setString(
+      _checkInTimesKey,
+      jsonEncode(
+        checkInTimes.map((key, value) => MapEntry(key.toString(), value)),
+      ),
+    );
+
+    await prefs.setString(
+      _checkInEnabledKey,
+      jsonEncode(checkInEnabled.toList()),
+    );
   }
 
-  // Load all saved trip-related information.
+  // Load all application data.
   Future<void> loadAllData() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load trips using the function we already created.
     await loadTrips();
 
     final savedItinerary = prefs.getString(_itineraryKey);
@@ -156,9 +186,63 @@ class TripService {
           ),
         );
     }
+
+    final savedContacts = prefs.getString(_contactsKey);
+
+    if (savedContacts != null) {
+      final List<dynamic> data = jsonDecode(savedContacts);
+
+      trustedContacts
+        ..clear()
+        ..addAll(data.map((item) => Map<String, dynamic>.from(item as Map)));
+    }
+
+    final savedNotes = prefs.getString(_safetyNotesKey);
+
+    if (savedNotes != null) {
+      safetyNotes
+        ..clear()
+        ..addAll(
+          (jsonDecode(savedNotes) as Map).map(
+            (key, value) => MapEntry(int.parse(key), value.toString()),
+          ),
+        );
+    }
+
+    final savedEmergency = prefs.getString(_emergencyInfoKey);
+
+    if (savedEmergency != null) {
+      emergencyInfo
+        ..clear()
+        ..addAll(
+          (jsonDecode(savedEmergency) as Map).map(
+            (key, value) => MapEntry(int.parse(key), value.toString()),
+          ),
+        );
+    }
+
+    final savedTimes = prefs.getString(_checkInTimesKey);
+
+    if (savedTimes != null) {
+      checkInTimes
+        ..clear()
+        ..addAll(
+          (jsonDecode(savedTimes) as Map).map(
+            (key, value) => MapEntry(int.parse(key), value.toString()),
+          ),
+        );
+    }
+
+    final savedEnabled = prefs.getString(_checkInEnabledKey);
+
+    if (savedEnabled != null) {
+      checkInEnabled
+        ..clear()
+        ..addAll((jsonDecode(savedEnabled) as List).map((id) => id as int));
+    }
   }
 
-  // Update an existing trip and save the changes.
+  // Update an existing trip.
   Future<void> updateTrip(Trip updatedTrip) async {
     final index = trips.indexWhere((trip) => trip.id == updatedTrip.id);
 
@@ -170,7 +254,7 @@ class TripService {
     await saveTrips();
   }
 
-  // ---- sample data so every screen has something to show ----
+  // Sample trip data.
   final List<Trip> trips = [
     Trip(
       id: 1,
@@ -229,7 +313,37 @@ class TripService {
     ),
   ];
 
-  // ---- per-trip lookups ----
+  // Safety information.
+  final List<Map<String, dynamic>> trustedContacts = [];
+
+  final Map<int, String> safetyNotes = {};
+
+  final Map<int, String> emergencyInfo = {};
+
+  final Map<int, String> checkInTimes = {};
+
+  final Set<int> checkInEnabled = {};
+
+  // Get contacts for a trip.
+  List<Map<String, dynamic>> contactsFor(int tripId) {
+    return trustedContacts
+        .where((contact) => contact['tripId'] == tripId)
+        .toList();
+  }
+
+  // Get next contact ID.
+  int nextContactId() {
+    if (trustedContacts.isEmpty) return 1;
+
+    return trustedContacts.fold<int>(
+          0,
+          (maxId, contact) =>
+              contact['id'] > maxId ? contact['id'] as int : maxId,
+        ) +
+        1;
+  }
+
+  // Per-trip lookups.
   List<ItineraryItem> itineraryFor(int tripId) =>
       itinerary.where((i) => i.tripId == tripId).toList();
 
@@ -242,14 +356,18 @@ class TripService {
   List<Place> placesFor(int tripId) =>
       places.where((p) => p.tripId == tripId).toList();
 
-  // ---- ids: next free id for a list of models ----
+  // Next free IDs.
   int nextTripId() => trips.isEmpty ? 1 : trips.last.id + 1;
+
   int nextItineraryId() => itinerary.isEmpty ? 1 : itinerary.last.id + 1;
+
   int nextPackingId() => packing.isEmpty ? 1 : packing.last.id + 1;
+
   int nextExpenseId() => expenses.isEmpty ? 1 : expenses.last.id + 1;
+
   int nextPlaceId() => places.isEmpty ? 1 : places.last.id + 1;
 
-  // ---- basic trip operations ----
+  // Basic trip operations.
   Future<void> addTrip(Trip trip) async {
     trips.add(trip);
     await saveTrips();
@@ -262,6 +380,13 @@ class TripService {
     packing.removeWhere((item) => item.tripId == tripId);
     expenses.removeWhere((item) => item.tripId == tripId);
     places.removeWhere((item) => item.tripId == tripId);
+
+    trustedContacts.removeWhere((contact) => contact['tripId'] == tripId);
+
+    safetyNotes.remove(tripId);
+    emergencyInfo.remove(tripId);
+    checkInTimes.remove(tripId);
+    checkInEnabled.remove(tripId);
 
     await saveAllData();
   }

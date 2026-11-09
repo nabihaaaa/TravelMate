@@ -21,7 +21,6 @@ class PackingScreen extends StatefulWidget {
 class _PackingScreenState extends State<PackingScreen> {
   final TripService _service = TripService.instance;
 
-  // Categories match the comment in the PackingItem model.
   static const List<String> _categories = [
     'Clothing',
     'Toiletries',
@@ -30,16 +29,57 @@ class _PackingScreenState extends State<PackingScreen> {
     'Other',
   ];
 
-  // Only the packing items that belong to this trip.
+  static const List<String> _filters = [
+    'All',
+    'Clothing',
+    'Toiletries',
+    'Other',
+  ];
+
+  String _selectedFilter = 'All';
+
   List<PackingItem> get _items => _service.packingFor(widget.trip.id);
 
-  // ---------- saving + snackbars ----------
+  List<PackingItem> get _visibleItems {
+    if (_selectedFilter == 'All') return _items;
 
-  // Saves everything through Person 4's storage, then shows a message.
-  Future<void> _save(String successMessage) async {
+    if (_selectedFilter == 'Other') {
+      return _items
+          .where(
+            (item) =>
+                item.category == 'Electronics' ||
+                item.category == 'Documents' ||
+                item.category == 'Other',
+          )
+          .toList();
+    }
+
+    return _items.where((item) => item.category == _selectedFilter).toList();
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
+  Future<void> _save(String message) async {
     try {
       await _service.saveAllData();
-      _showSnackBar(successMessage);
+      _showSnackBar(message);
     } catch (error) {
       _showSnackBar('Could not save changes. Please try again.');
     }
@@ -47,6 +87,7 @@ class _PackingScreenState extends State<PackingScreen> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -54,11 +95,11 @@ class _PackingScreenState extends State<PackingScreen> {
       );
   }
 
-  // ---------- actions ----------
-
-  // Checking/unchecking an item. Saves quietly (no snackbar every tap).
   Future<void> _togglePacked(PackingItem item, bool? value) async {
-    setState(() => item.isPacked = value ?? false);
+    setState(() {
+      item.isPacked = value ?? false;
+    });
+
     try {
       await _service.saveAllData();
     } catch (error) {
@@ -66,9 +107,8 @@ class _PackingScreenState extends State<PackingScreen> {
     }
   }
 
-  // Opens a dialog with a name field + category dropdown.
   Future<void> _addItem() async {
-    final nameController = TextEditingController();
+    String itemName = '';
     final formKey = GlobalKey<FormState>();
     String category = 'Other';
 
@@ -83,9 +123,12 @@ class _PackingScreenState extends State<PackingScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextFormField(
-                  controller: nameController,
+                  initialValue: itemName,
                   autofocus: true,
                   decoration: const InputDecoration(labelText: 'Item name'),
+                  onChanged: (value) {
+                    itemName = value;
+                  },
                   validator: (value) => (value == null || value.trim().isEmpty)
                       ? 'Please enter an item name'
                       : null,
@@ -94,11 +137,14 @@ class _PackingScreenState extends State<PackingScreen> {
                 DropdownButtonFormField<String>(
                   value: category,
                   decoration: const InputDecoration(labelText: 'Category'),
-                  items: _categories
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (value) =>
-                      setDialogState(() => category = value ?? 'Other'),
+                  items: _categories.map((c) {
+                    return DropdownMenuItem(value: c, child: Text(c));
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      category = value ?? 'Other';
+                    });
+                  },
                 ),
               ],
             ),
@@ -108,7 +154,7 @@ class _PackingScreenState extends State<PackingScreen> {
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
-            FilledButton(
+            ElevatedButton(
               onPressed: () {
                 if (formKey.currentState!.validate()) {
                   Navigator.pop(dialogContext, true);
@@ -122,19 +168,23 @@ class _PackingScreenState extends State<PackingScreen> {
     );
 
     if (added != true) return;
+    if (!mounted) return;
 
     final item = PackingItem(
       id: _service.nextPackingId(),
       tripId: widget.trip.id,
-      name: nameController.text.trim(),
+      name: itemName.trim(),
       category: category,
     );
 
-    setState(() => _service.packing.add(item));
+    setState(() {
+      _service.packing.add(item);
+      _selectedFilter = 'All';
+    });
+
     await _save('"${item.name}" added to your packing list');
   }
 
-  // Asks for confirmation before deleting.
   Future<void> _deleteItem(PackingItem item) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -146,7 +196,7 @@ class _PackingScreenState extends State<PackingScreen> {
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
@@ -156,144 +206,113 @@ class _PackingScreenState extends State<PackingScreen> {
 
     if (confirm != true) return;
 
-    setState(() => _service.packing.removeWhere((p) => p.id == item.id));
+    setState(() {
+      _service.packing.removeWhere((p) => p.id == item.id);
+    });
+
     await _save('"${item.name}" removed');
   }
-
-  // ---------- UI ----------
 
   @override
   Widget build(BuildContext context) {
     final items = _items;
+    final visibleItems = _visibleItems;
     final packedCount = items.where((i) => i.isPacked).length;
-
-    // Our categories first, plus any unexpected ones from saved data.
-    final categories = [
-      ..._categories,
-      ...items
-          .map((i) => i.category)
-          .where((c) => !_categories.contains(c))
-          .toSet(),
-    ];
+    final percentage = items.isEmpty
+        ? 0
+        : (packedCount / items.length * 100).round();
 
     return Scaffold(
-      appBar: AppBar(title: Text('Packing List · ${widget.trip.name}')),
-      body: items.isEmpty
-          ? _buildEmptyState()
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      appBar: AppBar(title: const Text('Packing List')),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               children: [
-                _buildProgressCard(packedCount, items.length),
-                for (final category in categories)
-                  if (items.any((i) => i.category == category))
-                    _buildCategorySection(
-                      category,
-                      items.where((i) => i.category == category).toList(),
-                    ),
+                _buildTripCard(packedCount, items.length, percentage),
+                const SizedBox(height: 12),
+                _buildFilters(),
+                const SizedBox(height: 8),
+                if (visibleItems.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: Text('No items in this category.')),
+                  )
+                else
+                  _buildItemList(visibleItems),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addItem,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Item'),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _addItem,
+                icon: const Icon(Icons.add),
+                label: const Text('Add Item'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFC15E76),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildProgressCard(int packed, int total) {
+  Widget _buildTripCard(int packed, int total, int percentage) {
     return Card(
+      color: const Color(0xFFF9E5E7),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              packed == total
-                  ? 'All packed!'
-                  : '$packed of $total items packed',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: total == 0 ? 0 : packed / total,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategorySection(String category, List<PackingItem> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-          child: Row(
-            children: [
-              Icon(
-                _iconFor(category),
-                size: 20,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(category, style: Theme.of(context).textTheme.titleSmall),
-            ],
-          ),
-        ),
-        Card(
-          child: Column(
-            children: [
-              for (final item in items)
-                CheckboxListTile(
-                  value: item.isPacked,
-                  onChanged: (value) => _togglePacked(item, value),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(
-                    item.name,
-                    style: TextStyle(
-                      decoration: item.isPacked
-                          ? TextDecoration.lineThrough
-                          : null,
-                      color: item.isPacked ? Colors.grey : null,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.trip.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  secondary: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Delete item',
-                    onPressed: () => _deleteItem(item),
-                  ),
                 ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.luggage,
-              size: 64,
-              color: Theme.of(context).colorScheme.primary,
+                const Icon(Icons.luggage_outlined, color: Color(0xFFAE526A)),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
             Text(
-              'Nothing to pack yet',
-              style: Theme.of(context).textTheme.titleMedium,
+              '${_formatDate(widget.trip.startDate)} – '
+              '${_formatDate(widget.trip.endDate)}, '
+              '${widget.trip.endDate.year}',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$packed of $total items packed',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                Text('$percentage%', style: const TextStyle(fontSize: 12)),
+              ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Tap "Add Item" to start your packing list.',
-              textAlign: TextAlign.center,
+            LinearProgressIndicator(
+              value: total == 0 ? 0 : packed / total,
+              minHeight: 7,
+              borderRadius: BorderRadius.circular(8),
+              backgroundColor: const Color(0xFFFFCDD5),
+              color: const Color(0xFFAE526A),
             ),
           ],
         ),
@@ -301,18 +320,112 @@ class _PackingScreenState extends State<PackingScreen> {
     );
   }
 
-  IconData _iconFor(String category) {
+  Widget _buildFilters() {
+    return Wrap(
+      spacing: 6,
+      children: _filters.map((label) {
+        final selected = _selectedFilter == label;
+
+        return ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          showCheckmark: false,
+          shape: const StadiumBorder(),
+          selectedColor: const Color(0xFFAE526A),
+          backgroundColor: const Color(0xFFF5E7E8),
+          labelStyle: TextStyle(
+            color: selected ? Colors.white : Colors.black87,
+            fontSize: 12,
+          ),
+          onSelected: (_) {
+            setState(() {
+              _selectedFilter = label;
+            });
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildItemList(List<PackingItem> items) {
+    return Card(
+      color: Colors.white,
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            Row(
+              children: [
+                Checkbox(
+                  value: items[i].isPacked,
+                  activeColor: const Color(0xFFAE526A),
+                  onChanged: (value) => _togglePacked(items[i], value),
+                ),
+                Icon(
+                  _iconFor(items[i].name, items[i].category),
+                  size: 18,
+                  color: const Color(0xFF75545D),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    items[i].name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      decoration: items[i].isPacked
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: items[i].isPacked ? Colors.grey : null,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      _deleteItem(items[i]);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
+                ),
+              ],
+            ),
+            if (i != items.length - 1)
+              const Divider(height: 1, indent: 12, endIndent: 12),
+          ],
+        ],
+      ),
+    );
+  }
+
+  IconData _iconFor(String name, String category) {
+    switch (name.toLowerCase()) {
+      case 't-shirts':
+      case 'shirts':
+      case 'jeans':
+        return Icons.checkroom;
+      case 'running shoes':
+        return Icons.directions_run;
+      case 'toothbrush':
+        return Icons.cleaning_services;
+      case 'sunscreen':
+        return Icons.wb_sunny_outlined;
+      case 'passport':
+        return Icons.assignment_outlined;
+    }
+
     switch (category) {
       case 'Clothing':
         return Icons.checkroom;
       case 'Toiletries':
-        return Icons.soap;
+        return Icons.cleaning_services;
       case 'Electronics':
         return Icons.devices;
       case 'Documents':
-        return Icons.description;
+        return Icons.description_outlined;
       default:
-        return Icons.category;
+        return Icons.category_outlined;
     }
   }
 }

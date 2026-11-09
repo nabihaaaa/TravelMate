@@ -22,13 +22,19 @@ class ExpensesScreen extends StatefulWidget {
 class _ExpensesScreenState extends State<ExpensesScreen> {
   final TripService _service = TripService.instance;
 
-  // Categories match the comment in the Expense model.
   static const List<String> _categories = [
     'Food',
     'Accommodation',
     'Transport',
     'Recreation',
     'Shopping',
+    'Other',
+  ];
+
+  static const List<String> _filters = [
+    'All',
+    'Accommodation',
+    'Food',
     'Other',
   ];
 
@@ -47,43 +53,73 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     'Dec',
   ];
 
-  // Only allows numbers with up to 2 decimal places (e.g. 12.50).
+  static const Color _pink = Color(0xFFC15E76);
+  static const Color _lightPink = Color(0xFFFFEEEE);
+
+  String _selectedFilter = 'All';
+
   final _moneyFormatter = FilteringTextInputFormatter.allow(
     RegExp(r'^\d*\.?\d{0,2}'),
   );
 
-  // This trip's expenses, newest first.
   List<Expense> get _expenses {
     final list = _service.expensesFor(widget.trip.id);
     list.sort((a, b) => b.date.compareTo(a.date));
     return list;
   }
 
-  // Adds up every expense amount for this trip.
+  List<Expense> get _visibleExpenses {
+    if (_selectedFilter == 'All') return _expenses;
+
+    if (_selectedFilter == 'Other') {
+      return _expenses
+          .where(
+            (e) =>
+                e.category == 'Transport' ||
+                e.category == 'Recreation' ||
+                e.category == 'Shopping' ||
+                e.category == 'Other',
+          )
+          .toList();
+    }
+
+    return _expenses.where((e) => e.category == _selectedFilter).toList();
+  }
+
   double get _total => _expenses.fold(0.0, (sum, e) => sum + e.amount);
 
-  String _money(double value) => '\$${value.toStringAsFixed(2)}';
+  String _money(double value, {bool decimals = true}) {
+    final parts = value.toStringAsFixed(decimals ? 2 : 0).split('.');
+    final whole = parts[0];
+
+    final formatted = whole.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+
+    return '\$$formatted${decimals ? '.${parts[1]}' : ''}';
+  }
 
   String _formatDate(DateTime d) =>
       '${_months[d.month - 1]} ${d.day}, ${d.year}';
 
-  // New expenses default to today if we're during the trip,
-  // otherwise to the trip's start date.
   DateTime _defaultDate() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+
     final inTrip =
         !today.isBefore(widget.trip.startDate) &&
         !today.isAfter(widget.trip.endDate);
+
     return inTrip ? today : widget.trip.startDate;
   }
 
-  // ---------- saving + snackbars ----------
+  // ---------- saving ----------
 
-  Future<void> _save(String successMessage) async {
+  Future<void> _save(String message) async {
     try {
       await _service.saveAllData();
-      _showSnackBar(successMessage);
+      _showSnackBar(message);
     } catch (error) {
       _showSnackBar('Could not save changes. Please try again.');
     }
@@ -91,6 +127,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -101,12 +138,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   // ---------- budget ----------
 
   Future<void> _setBudget() async {
-    final controller = TextEditingController(
-      text: widget.trip.budget?.toStringAsFixed(2) ?? '',
-    );
+    String budgetText = widget.trip.budget?.toStringAsFixed(2) ?? '';
+
     final formKey = GlobalKey<FormState>();
 
-    // Returns 'save', 'clear', or null (cancelled).
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -114,7 +149,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         content: Form(
           key: formKey,
           child: TextFormField(
-            controller: controller,
+            initialValue: budgetText,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [_moneyFormatter],
@@ -122,9 +157,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               labelText: 'Budget',
               prefixText: '\$ ',
             ),
+            onChanged: (value) {
+              budgetText = value;
+            },
             validator: (value) {
               final number = double.tryParse(value?.trim() ?? '');
-              if (number == null) return 'Please enter a valid amount';
+              if (number == null || number < 0) {
+                return 'Please enter a valid amount';
+              }
               return null;
             },
           ),
@@ -139,10 +179,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                Navigator.pop(dialogContext, 'save');
+                Navigator.pop(dialogContext, budgetText.trim());
               }
             },
             child: const Text('Save'),
@@ -153,9 +193,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     if (result == null) return;
 
-    final newBudget = result == 'clear'
-        ? null
-        : double.parse(controller.text.trim());
+    final newBudget = result == 'clear' ? null : double.parse(result);
+
+    if (!mounted) return;
 
     setState(() => widget.trip.budget = newBudget);
 
@@ -171,18 +211,17 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     }
   }
 
-  // ---------- add / edit / delete expenses ----------
+  // ---------- add / edit / delete ----------
 
-  // One form for both adding (existing == null) and editing.
   Future<void> _openExpenseForm({Expense? existing}) async {
-    final titleController = TextEditingController(text: existing?.title ?? '');
-    final amountController = TextEditingController(
-      text: existing?.amount.toStringAsFixed(2) ?? '',
-    );
+    String title = existing?.title ?? '';
+    String amountText = existing?.amount.toStringAsFixed(2) ?? '';
+
     final formKey = GlobalKey<FormState>();
 
     String category = existing?.category ?? 'Other';
     if (!_categories.contains(category)) category = 'Other';
+
     DateTime date = existing?.date ?? _defaultDate();
 
     final saved = await showDialog<bool>(
@@ -197,19 +236,21 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
-                    controller: titleController,
+                    initialValue: title,
                     autofocus: existing == null,
                     decoration: const InputDecoration(
                       labelText: 'What was it for?',
                     ),
-                    validator: (value) =>
-                        (value == null || value.trim().isEmpty)
+                    onChanged: (value) {
+                      title = value;
+                    },
+                    validator: (value) => value == null || value.trim().isEmpty
                         ? 'Please enter a title'
                         : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
-                    controller: amountController,
+                    initialValue: amountText,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -218,10 +259,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       labelText: 'Amount',
                       prefixText: '\$ ',
                     ),
+                    onChanged: (value) {
+                      amountText = value;
+                    },
                     validator: (value) {
                       final number = double.tryParse(value?.trim() ?? '');
-                      if (number == null) return 'Please enter an amount';
-                      if (number <= 0) return 'Amount must be greater than 0';
+                      if (number == null || number <= 0) {
+                        return 'Enter an amount greater than 0';
+                      }
                       return null;
                     },
                   ),
@@ -229,11 +274,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   DropdownButtonFormField<String>(
                     value: category,
                     decoration: const InputDecoration(labelText: 'Category'),
-                    items: _categories
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (value) =>
-                        setDialogState(() => category = value ?? 'Other'),
+                    items: _categories.map((c) {
+                      return DropdownMenuItem(value: c, child: Text(c));
+                    }).toList(),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        category = value ?? 'Other';
+                      });
+                    },
                   ),
                   const SizedBox(height: 12),
                   ListTile(
@@ -248,6 +296,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                       );
+
                       if (picked != null) {
                         setDialogState(() => date = picked);
                       }
@@ -262,7 +311,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
-            FilledButton(
+            ElevatedButton(
               onPressed: () {
                 if (formKey.currentState!.validate()) {
                   Navigator.pop(dialogContext, true);
@@ -277,27 +326,35 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     if (saved != true) return;
 
-    final title = titleController.text.trim();
-    final amount = double.parse(amountController.text.trim());
+    final amount = double.parse(amountText.trim());
+
+    if (!mounted) return;
 
     if (existing == null) {
       final expense = Expense(
         id: _service.nextExpenseId(),
         tripId: widget.trip.id,
-        title: title,
+        title: title.trim(),
         amount: amount,
         category: category,
         date: date,
       );
-      setState(() => _service.expenses.add(expense));
+
+      setState(() {
+        _service.expenses.add(expense);
+        _selectedFilter = 'All';
+      });
+
       await _save('Expense added');
     } else {
       setState(() {
-        existing.title = title;
+        existing.title = title.trim();
         existing.amount = amount;
         existing.category = category;
         existing.date = date;
+        _selectedFilter = 'All';
       });
+
       await _save('Expense updated');
     }
   }
@@ -313,7 +370,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
@@ -323,7 +380,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     if (confirm != true) return;
 
-    setState(() => _service.expenses.removeWhere((e) => e.id == expense.id));
+    setState(() {
+      _service.expenses.removeWhere((e) => e.id == expense.id);
+    });
+
     await _save('Expense deleted');
   }
 
@@ -331,91 +391,153 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final expenses = _expenses;
+    final budget = widget.trip.budget;
     final total = _total;
+    final expenses = _visibleExpenses;
+
+    final percentage = budget == null || budget <= 0
+        ? 0
+        : (total / budget * 100).round();
 
     return Scaffold(
       appBar: AppBar(title: Text('Expenses · ${widget.trip.name}')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      body: Column(
         children: [
-          _buildSummaryCard(total),
-          const SizedBox(height: 16),
-          if (expenses.isEmpty)
-            _buildEmptyState()
-          else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-              child: Text(
-                'Expenses (${expenses.length})',
-                style: Theme.of(context).textTheme.titleSmall,
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              children: [
+                _buildSummaryCard(total, budget, percentage),
+                const SizedBox(height: 12),
+                _buildFilters(),
+                const SizedBox(height: 2),
+                if (expenses.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: Text('No expenses in this category.')),
+                  )
+                else
+                  _buildExpenseList(expenses),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _openExpenseForm(),
+                icon: const Icon(Icons.add),
+                label: const Text('Add Expense'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: const StadiumBorder(),
+                ),
               ),
             ),
-            for (final expense in expenses) _buildExpenseTile(expense),
-          ],
+          ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openExpenseForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Expense'),
       ),
     );
   }
 
-  // Total spent + budget progress (only shows the bar if a budget is set).
-  Widget _buildSummaryCard(double total) {
-    final budget = widget.trip.budget;
-    final overBudget = budget != null && total > budget;
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+  // ---------- budget summary ----------
+
+  Widget _buildSummaryCard(double total, double? budget, int percentage) {
+    final remaining = budget == null ? null : budget - total;
+    final overBudget = remaining != null && remaining < 0;
 
     return Card(
+      color: _lightPink,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: Text('Total spent', style: textTheme.titleSmall),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Total Budget',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          IconButton(
+                            onPressed: _setBudget,
+                            icon: const Icon(Icons.edit, size: 15),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                            color: _pink,
+                          ),
+                        ],
+                      ),
+                      Text(
+                        budget == null
+                            ? 'Not set'
+                            : _money(budget, decimals: false),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                TextButton.icon(
-                  onPressed: _setBudget,
-                  icon: const Icon(Icons.edit, size: 18),
-                  label: Text(budget == null ? 'Set budget' : 'Edit budget'),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Total Spent',
+                      style: TextStyle(fontSize: 12, color: _pink),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _money(total),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            Text(
-              _money(total),
-              style: textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (budget == null) ...[
-              const SizedBox(height: 8),
-              Text('No budget set for this trip.', style: textTheme.bodyMedium),
-            ] else ...[
-              const SizedBox(height: 12),
+            const SizedBox(height: 12),
+            if (budget == null)
+              TextButton(onPressed: _setBudget, child: const Text('Set budget'))
+            else ...[
               LinearProgressIndicator(
-                value: budget == 0
-                    ? 1.0
+                value: budget <= 0
+                    ? 0
                     : (total / budget).clamp(0.0, 1.0).toDouble(),
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
-                color: overBudget ? scheme.error : null,
+                minHeight: 7,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xFFFFCDD5),
+                color: overBudget ? Colors.red : _pink,
               ),
-              const SizedBox(height: 8),
-              Text(
-                overBudget
-                    ? 'Over budget by ${_money(total - budget)}'
-                    : '${_money(budget - total)} left of ${_money(budget)}',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: overBudget ? scheme.error : null,
-                  fontWeight: FontWeight.w600,
-                ),
+              const SizedBox(height: 7),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      overBudget
+                          ? 'Over budget by ${_money(-remaining, decimals: false)}'
+                          : '${_money(remaining!, decimals: false)} remaining',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                  Text('$percentage%', style: const TextStyle(fontSize: 11)),
+                ],
               ),
             ],
           ],
@@ -424,57 +546,135 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
-  Widget _buildExpenseTile(Expense expense) {
+  // ---------- category filters ----------
+
+  Widget _buildFilters() {
+    return Wrap(
+      spacing: 6,
+      children: _filters.map((label) {
+        final selected = _selectedFilter == label;
+
+        return ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          showCheckmark: false,
+          shape: const StadiumBorder(),
+          selectedColor: _pink,
+          backgroundColor: const Color(0xFFF5E7E8),
+          labelStyle: TextStyle(
+            color: selected ? Colors.white : Colors.black87,
+            fontSize: 11,
+          ),
+          onSelected: (_) {
+            setState(() => _selectedFilter = label);
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  // ---------- expense list ----------
+
+  Widget _buildExpenseList(List<Expense> expenses) {
     return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Icon(_iconFor(expense.category), size: 20),
-        ),
-        title: Text(expense.title),
-        subtitle: Text('${expense.category} · ${_formatDate(expense.date)}'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _money(expense.amount),
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete expense',
-              onPressed: () => _deleteExpense(expense),
-            ),
+      color: Colors.white,
+      child: Column(
+        children: [
+          for (int i = 0; i < expenses.length; i++) ...[
+            _buildExpenseRow(expenses[i]),
+            if (i != expenses.length - 1)
+              const Divider(height: 1, indent: 12, endIndent: 12),
           ],
-        ),
-        onTap: () => _openExpenseForm(existing: expense),
+        ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Column(
-        children: [
-          Icon(
-            Icons.receipt_long,
-            size: 64,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No expenses yet',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Tap "Add Expense" to record your first one.',
-            textAlign: TextAlign.center,
-          ),
-        ],
+  Widget _buildExpenseRow(Expense expense) {
+    return InkWell(
+      onTap: () => _openExpenseForm(existing: expense),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _iconBackground(expense.category),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _iconFor(expense.category),
+                size: 19,
+                color: _iconColor(expense.category),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    expense.title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${expense.category} · ${_formatDate(expense.date)}',
+                    style: const TextStyle(fontSize: 11, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _money(expense.amount),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              onSelected: (value) {
+                if (value == 'edit') {
+                  _openExpenseForm(existing: expense);
+                } else if (value == 'delete') {
+                  _deleteExpense(expense);
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'edit', child: Text('Edit')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Color _iconBackground(String category) {
+    switch (category) {
+      case 'Food':
+        return const Color(0xFFFFE9D8);
+      case 'Transport':
+        return const Color(0xFFE8E7FA);
+      default:
+        return const Color(0xFFFFDDE3);
+    }
+  }
+
+  Color _iconColor(String category) {
+    switch (category) {
+      case 'Food':
+        return Colors.deepOrange;
+      case 'Transport':
+        return Colors.deepPurple;
+      default:
+        return const Color(0xFFAE526A);
+    }
   }
 
   IconData _iconFor(String category) {
@@ -484,7 +684,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       case 'Accommodation':
         return Icons.hotel;
       case 'Transport':
-        return Icons.directions_car;
+        return Icons.directions_bus;
       case 'Recreation':
         return Icons.local_activity;
       case 'Shopping':

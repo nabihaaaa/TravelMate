@@ -16,10 +16,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
-  static const List<Widget> _pages = <Widget>[
-    HomeScreen(),
-    SettingsScreen(),
-  ];
+  static const List<Widget> _pages = <Widget>[HomeScreen(), SettingsScreen()];
 
   @override
   Widget build(BuildContext context) {

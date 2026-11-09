@@ -9,6 +9,7 @@ import '../models/itinerary_item.dart';
 import '../models/trip.dart';
 import '../routes.dart';
 import '../services/trip_service.dart';
+import 'safety_screen.dart';
 
 class TripDashboardScreen extends StatefulWidget {
   const TripDashboardScreen({super.key, required this.trip});
@@ -96,6 +97,7 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
           _buildUpNextCard(),
           _buildPlacesCard(),
           _buildItineraryCard(),
+          _buildSafetyCard(),
         ],
       ),
     );
@@ -292,6 +294,25 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
         subtitle: const Text('Plan your trip day by day'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _go(Routes.itinerary),
+      ),
+    );
+  }
+
+  Widget _buildSafetyCard() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.health_and_safety_outlined),
+        title: const Text('Travel Safety'),
+        subtitle: const Text('Trusted contacts and check-in reminders'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => SafetyScreen(trip: trip)),
+          );
+
+          if (mounted) setState(() {});
+        },
       ),
     );
   }
