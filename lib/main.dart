@@ -4,6 +4,9 @@ import 'routes.dart';
 import 'services/trip_service.dart';
 import 'services/theme_service.dart';
 
+//Import our notification service.
+import 'services/notification_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -13,6 +16,10 @@ Future<void> main() async {
   // Load the user's saved theme preference.
   await ThemeService.loadTheme();
 
+  // NEW: Initialize local notifications.
+  await NotificationService.instance.initialize();
+
+  // Start TravelMate.
   runApp(const MyApp());
 }
 
