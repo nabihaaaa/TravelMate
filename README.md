@@ -191,7 +191,7 @@ On GitHub:
 
 The project coordinator will review the changes and merge approved Pull Requests into `dev`.
 
-**Important:** Do not merge directly into `main`. The `dev` branch will only be merged into `main once the integrated application has been tested and is working correctly.
+**Important:** Do not merge directly into `main`. The `dev` branch will only be merged into `main` once the integrated application has been tested and is working correctly.
 
 ---
 
@@ -296,3 +296,71 @@ travelmate/
 - **Navigation:** The application uses Flutter's standard named-route navigation mechanisms, including `Navigator.pushNamed` and `onGenerateRoute`.
 - **State Management:** The starter project uses `setState` and a shared `TripService`. The storage implementation can be updated while maintaining the agreed method interfaces.
 
+---
+
+# 10. Team Contributions
+
+### Person 1 (Z): Home & Trip Dashboard
+**Files:** `home_screen.dart`, `trip_dashboard_screen.dart`
+**Branch:** `feature/zoha-home`
+
+- My Trips list with All / Upcoming / Past filters, sorted by start date
+- "Next trip" card showing the soonest trip with packing and spending summary
+- Edit and delete trips from the list (delete asks for confirmation)
+- Empty states when there are no trips
+- Trip Dashboard with destination, dates, number of days, notes, packing progress, budget progress, upcoming activities, and shortcuts to Packing, Expenses, Itinerary, and Places & Map
+- Reads all data from the shared `Trip` model and `TripService`
+
+### Person 2 (Se): Create Trip & Itinerary
+**Files:** `create_trip_screen.dart`, `itinerary_screen.dart`
+**Branch:** `feature/person2-trip-itinerary`
+
+- Create/Edit Trip form with text fields and input validation
+- Date pickers for trip start and end dates, with a check that the end date is not before the start date
+- Snackbar confirmations ("Trip created!", "Trip updated!")
+- Itinerary screen to view, add, edit, and delete scheduled activities
+- Saves trips and activities through the shared `TripService`
+
+### Person 3 (N): Architecture, Navigation & Shared Models
+**Files:** `main.dart`, `routes.dart`, `main_shell.dart`, and the models in `models/`
+**Branch:** `main` (no separate feature branch)
+
+- Project structure organized into screens, models, services, and widgets
+- Named routes in `routes.dart`, including routes that pass a `Trip` as an argument
+- Bottom navigation between Home and Settings
+- Five shared models: `Trip`, `ItineraryItem`, `PackingItem`, `Expense`, `Place`
+- UI fixes and a Safety screen added to `main`
+- GitHub repository setup, branching workflow, and merging the team's pull requests
+
+### Person 4 (SR): Storage & Settings
+**Files:** `trip_service.dart`, `settings_screen.dart`
+**Branch:** `sruthika-data-settings`
+
+- Local storage with `shared_preferences` so trips, itinerary items, packing items, expenses, and places remain after restarting the app
+- Reusable functions for adding, updating, deleting, and loading trips (deleting a trip also removes its related data)
+- Settings screen with theme switching
+- Shared data used by every other screen
+
+### Person 5 (M): Packing & Expenses
+**Files:** `packing_screen.dart`, `expenses_screen.dart`
+**Branch:** `feature/mariyam-packing-expenses`
+
+- Packing list with checkboxes to mark items as packed
+- Add and delete packing items
+- Expenses screen with budget tracking and expense categories
+- Total spent and remaining budget calculation
+- Snackbars for successful actions and errors
+
+### Person 6 (F): Places, Maps & Notifications
+**Files:** `places_screen.dart`, `notification_service.dart`
+**Branch:** `feature/firdous-places-notifications`
+
+- Places screen to add, view, and delete saved places for each trip
+- Saved places persist between sessions
+- Local notifications with `flutter_local_notifications`: schedule, change, and cancel trip reminders
+- Tested across multiple trips
+
+### Other Branches
+
+- `main`: stable version of the app
+- `dev`: shared development branch (still at the initial project setup)
