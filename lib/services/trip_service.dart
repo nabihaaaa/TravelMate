@@ -311,6 +311,22 @@ class TripService {
       latitude: 45.5048,
       longitude: -73.5878,
     ),
+    Place(
+      id: 2,
+      tripId: 1,
+      name: 'Notre-Dame Basilica',
+      address: 'Montréal, QC',
+      latitude: 45.5045,
+      longitude: -73.5561,
+    ),
+    Place(
+      id: 3,
+      tripId: 1,
+      name: 'Montreal Museum of Fine Arts',
+      address: 'Montréal, QC',
+      latitude: 45.4990,
+      longitude: -73.5790,
+    ),
   ];
 
   // Safety information.

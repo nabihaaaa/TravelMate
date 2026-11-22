@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/place.dart';
 import '../models/trip.dart';
@@ -233,86 +234,36 @@ class _PlacesScreenState extends State<PlacesScreen> {
   }
 
   Widget _buildMapPreview() {
+    // Create a marker for each saved place with valid coordinates.
+    debugPrint('SAVED PLACES:');
+    for (final place in _places) {
+      debugPrint('${place.name}: ${place.latitude}, ${place.longitude}');
+    }
+    final Set<Marker> markers = _places
+        .where((place) => place.latitude != 0.0 || place.longitude != 0.0)
+        .map((place) {
+          return Marker(
+            markerId: MarkerId(place.id.toString()),
+            position: LatLng(place.latitude, place.longitude),
+            infoWindow: InfoWindow(title: place.name, snippet: place.address),
+          );
+        })
+        .toSet();
+
     return Container(
       height: 180,
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDECE8),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 65, color: const Color(0xFFDCEBD3)),
-          ),
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 75, color: const Color(0xFFDCEBD3)),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 45,
-            child: Container(height: 12, color: Colors.white),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 112,
-            child: Container(height: 10, color: Colors.white),
-          ),
-          Positioned(
-            left: 85,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 9, color: Colors.white),
-          ),
-          Positioned(
-            right: 105,
-            top: 0,
-            bottom: 0,
-            child: Container(width: 9, color: Colors.white),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 78,
-            child: Container(height: 5, color: const Color(0xFFD7D5D0)),
-          ),
-          Positioned(
-            left: 42,
-            top: 30,
-            child: Icon(Icons.location_on, size: 35, color: _pink),
-          ),
-          Positioned(
-            left: 145,
-            top: 78,
-            child: Icon(Icons.location_on, size: 35, color: _pink),
-          ),
-          Positioned(
-            right: 38,
-            top: 48,
-            child: Icon(Icons.location_on, size: 35, color: _pink),
-          ),
-          Positioned(
-            bottom: 10,
-            right: 12,
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.map_outlined, size: 18, color: _darkPink),
-            ),
-          ),
-        ],
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+      child: GoogleMap(
+        initialCameraPosition: const CameraPosition(
+          target: LatLng(45.5019, -73.5674),
+          zoom: 11,
+        ),
+        markers: markers,
+        mapType: MapType.normal,
+        zoomControlsEnabled: true,
+        myLocationButtonEnabled: false,
       ),
     );
   }

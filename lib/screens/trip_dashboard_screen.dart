@@ -4,6 +4,7 @@
 // Owner: Person 1 (Z).
 
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/itinerary_item.dart';
 import '../models/trip.dart';
@@ -273,15 +274,61 @@ class _TripDashboardScreenState extends State<TripDashboardScreen> {
   }
 
   Widget _buildPlacesCard() {
-    final count = TripService.instance.placesFor(trip.id).length;
+    final places = TripService.instance.placesFor(trip.id);
+
+    // Only display places that have valid coordinates.
+    final validPlaces = places
+        .where((place) => place.latitude != 0.0 || place.longitude != 0.0)
+        .toList();
+
+    // Create a marker for each saved place.
+    final Set<Marker> markers = validPlaces.map((place) {
+      return Marker(
+        markerId: MarkerId(place.id.toString()),
+        position: LatLng(place.latitude, place.longitude),
+        infoWindow: InfoWindow(title: place.name, snippet: place.address),
+      );
+    }).toSet();
+
+    // Centre the map on the first saved place.
+    final LatLng mapCenter = validPlaces.isNotEmpty
+        ? LatLng(validPlaces.first.latitude, validPlaces.first.longitude)
+        : const LatLng(45.5019, -73.5674);
 
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.map),
-        title: const Text('Places & Map'),
-        subtitle: Text('$count saved ${count == 1 ? 'place' : 'places'}'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _go(Routes.places),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 125,
+            width: double.infinity,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: mapCenter,
+                zoom: 11,
+              ),
+              markers: markers,
+              mapType: MapType.normal,
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              compassEnabled: false,
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.map),
+            title: const Text('Places & Map'),
+            subtitle: Text(
+              '${places.length} saved '
+              '${places.length == 1 ? 'place' : 'places'}',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _go(Routes.places),
+          ),
+        ],
       ),
     );
   }
