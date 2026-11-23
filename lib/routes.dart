@@ -1,6 +1,6 @@
 // All route names and the route table live HERE (owner: Person 3).
 // To open a screen from anywhere:
-//
+//case
 //   Navigator.pushNamed(context, Routes.dashboard, arguments: trip);
 //
 // Trip screens need a Trip passed as `arguments`.
@@ -12,11 +12,12 @@ import 'models/trip.dart';
 import 'screens/create_trip_screen.dart';
 import 'screens/expenses_screen.dart';
 import 'screens/itinerary_screen.dart';
-import 'screens/main_shell.dart';
+//import 'screens/main_shell.dart';
 import 'screens/packing_screen.dart';
 import 'screens/places_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/trip_dashboard_screen.dart';
+import 'screens/auth_gate.dart';
 
 class Routes {
   static const String home = '/';
@@ -31,7 +32,7 @@ class Routes {
   static Route<dynamic> generate(RouteSettings settings) {
     switch (settings.name) {
       case home:
-        return MaterialPageRoute(builder: (_) => const MainShell());
+       return MaterialPageRoute(builder: (_) => const AuthGate());
 
       case createTrip:
         final Trip? trip = settings.arguments as Trip?;
@@ -52,7 +53,7 @@ class Routes {
         return MaterialPageRoute(builder: (_) => const SettingsScreen());
 
       default:
-        return MaterialPageRoute(builder: (_) => const MainShell());
+        return MaterialPageRoute(builder: (_) => const AuthGate());
     }
   }
 

@@ -1,14 +1,21 @@
-import 'package:flutter/material.dart';
 
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'firebase_options.dart';
 import 'routes.dart';
 import 'services/trip_service.dart';
 import 'services/theme_service.dart';
-
-//Import our notification service.
 import 'services/notification_service.dart';
+import 'package:flutter/foundation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase before any authentication features are used.
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   // Load saved trip information.
   await TripService.instance.loadAllData();
@@ -16,9 +23,13 @@ Future<void> main() async {
   // Load the user's saved theme preference.
   await ThemeService.loadTheme();
 
-  // NEW: Initialize local notifications.
+  // Initialize local notifications.
+// Local notifications are only initialized on Android and iOS.
+if (!kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+     defaultTargetPlatform == TargetPlatform.iOS)) {
   await NotificationService.instance.initialize();
-
+}
   // Start TravelMate.
   runApp(const MyApp());
 }
