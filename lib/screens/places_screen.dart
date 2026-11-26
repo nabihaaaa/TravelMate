@@ -1,22 +1,464 @@
-// OWNER: Person 6 (F). Placeholder: replace the body with the real screen.
-// Keep the class name and the constructor so routes.dart keeps working.
+﻿import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import 'package:flutter/material.dart';
-
+import '../models/place.dart';
 import '../models/trip.dart';
-import '../widgets/placeholder_screen.dart';
+import '../services/trip_service.dart';
+import 'parking_screen.dart';
 
-class PlacesScreen extends StatelessWidget {
+class PlacesScreen extends StatefulWidget {
   const PlacesScreen({super.key, required this.trip});
 
   final Trip trip;
 
   @override
+  State<PlacesScreen> createState() => _PlacesScreenState();
+}
+
+class _PlacesScreenState extends State<PlacesScreen> {
+  final TripService _service = TripService.instance;
+
+  bool _saving = false;
+  String _searchQuery = '';
+
+  static const Color _pink = Color(0xFFC15E76);
+  static const Color _darkPink = Color(0xFF91485D);
+  static const Color _lightPink = Color(0xFFFFF0F1);
+  static const Color _background = Color(0xFFFFF8F7);
+
+  List<Place> get _places => _service.placesFor(widget.trip.id);
+
+  List<Place> get _filteredPlaces {
+    if (_searchQuery.isEmpty) return _places;
+
+    return _places.where((place) {
+      return place.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          place.address.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+
+  Future<void> _addPlace() async {
+    final formKey = GlobalKey<FormState>();
+    String name = '';
+    String address = '';
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Add a Place'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Place name',
+                  hintText: 'e.g. Eiffel Tower',
+                  prefixIcon: Icon(Icons.place_outlined),
+                ),
+                textCapitalization: TextCapitalization.words,
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Please enter a place name'
+                    : null,
+                onSaved: (value) => name = value!.trim(),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Address or location',
+                  hintText: 'e.g. Paris, France',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Please enter a location'
+                    : null,
+                onSaved: (value) => address = value!.trim(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                formKey.currentState!.save();
+                Navigator.pop(dialogContext, {
+                  'name': name,
+                  'address': address,
+                });
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save Place'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    setState(() => _saving = true);
+
+    final nextId =
+        _service.places.fold<int>(
+          0,
+          (maxId, place) => place.id > maxId ? place.id : maxId,
+        ) +
+        1;
+
+    final place = Place(
+      id: nextId,
+      tripId: widget.trip.id,
+      name: result['name']!,
+      address: result['address']!,
+    );
+
+    try {
+      _service.places.add(place);
+      await _service.saveAllData();
+
+      if (!mounted) return;
+      setState(() => _searchQuery = '');
+      _showSnackBar('Place added to your trip!');
+    } catch (error) {
+      _service.places.remove(place);
+      _showSnackBar('Could not save this place.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deletePlace(Place place) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Remove this place?'),
+        content: Text('Remove "${place.name}" from your saved places?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    setState(() => _saving = true);
+    final index = _service.places.indexOf(place);
+
+    try {
+      _service.places.remove(place);
+      await _service.saveAllData();
+
+      if (!mounted) return;
+      _showSnackBar('Place removed successfully.');
+    } catch (error) {
+      if (index >= 0 && !_service.places.contains(place)) {
+        _service.places.insert(index, place);
+      }
+      _showSnackBar('Could not remove this place.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  IconData _iconForPlace(String name) {
+    final value = name.toLowerCase();
+
+    if (value.contains('hotel') || value.contains('inn')) {
+      return Icons.hotel_outlined;
+    }
+    if (value.contains('restaurant') || value.contains('cafe')) {
+      return Icons.restaurant_outlined;
+    }
+    if (value.contains('park')) {
+      return Icons.park_outlined;
+    }
+    if (value.contains('airport')) {
+      return Icons.flight_outlined;
+    }
+
+    return Icons.location_on_outlined;
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: const Color(0xFFF0E2E3)),
+      ),
+      child: TextField(
+        onChanged: (value) {
+          setState(() => _searchQuery = value);
+        },
+        decoration: const InputDecoration(
+          hintText: 'Search for places...',
+          prefixIcon: Icon(Icons.search, size: 20),
+          border: InputBorder.none,
+          hintStyle: TextStyle(fontSize: 13),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapPreview() {
+    // Create a marker for each saved place with valid coordinates.
+    debugPrint('SAVED PLACES:');
+    for (final place in _places) {
+      debugPrint('${place.name}: ${place.latitude}, ${place.longitude}');
+    }
+    final Set<Marker> markers = _places
+        .where((place) => place.latitude != 0.0 || place.longitude != 0.0)
+        .map((place) {
+          return Marker(
+            markerId: MarkerId(place.id.toString()),
+            position: LatLng(place.latitude, place.longitude),
+            infoWindow: InfoWindow(title: place.name, snippet: place.address),
+          );
+        })
+        .toSet();
+
+    return Container(
+      height: 180,
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+      child: GoogleMap(
+        initialCameraPosition: const CameraPosition(
+          target: LatLng(45.5019, -73.5674),
+          zoom: 11,
+        ),
+        markers: markers,
+        mapType: MapType.normal,
+        zoomControlsEnabled: true,
+        myLocationButtonEnabled: false,
+      ),
+    );
+  }
+
+  Widget _buildPlaceCard(Place place) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFF0DCDD)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFE5E8),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(
+                _iconForPlace(place.name),
+                color: _darkPink,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    place.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.near_me_outlined,
+                        size: 12,
+                        color: Colors.black54,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          place.address,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Delete place',
+              onPressed: _saving ? null : () => _deletePlace(place),
+              icon: const Icon(Icons.more_vert, size: 21),
+              color: Colors.black54,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return PlaceholderScreen(
-      title: 'Places & Map',
-      owner: 'Person 6 (F)',
-      subtitle: trip.name,
+    final places = _filteredPlaces;
+
+    return Scaffold(
+      backgroundColor: _background,
+      appBar: AppBar(
+        backgroundColor: _background,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Places & Map',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                children: [
+                  _buildSearchBar(),
+                  const SizedBox(height: 12),
+                  _buildMapPreview(),
+                  const SizedBox(height: 12),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ParkingScreen(trip: widget.trip),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.local_parking),
+                      label: const Text('Find My Parked Car'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .onPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Saved Places',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 10),
+                  if (places.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.bookmark_border, size: 38, color: _pink),
+                          const SizedBox(height: 10),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'No saved places yet.'
+                                : 'No places found.',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            'Add a place to keep track of your destinations.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...places.map(_buildPlaceCard),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: const BoxDecoration(
+                color: _background,
+                border: Border(top: BorderSide(color: Color(0xFFF0DCDD))),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _saving ? null : _addPlace,
+                  icon: const Icon(Icons.add, size: 19),
+                  label: Text(_saving ? 'Saving...' : 'Add Place'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _darkPink,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

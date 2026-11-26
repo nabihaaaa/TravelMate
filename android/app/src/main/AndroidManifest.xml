@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<!-- Permissions for GPS and location services -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+<!-- Required for Google Maps and online directions -->
+<uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="travelmate"
         android:name="${applicationName}"
